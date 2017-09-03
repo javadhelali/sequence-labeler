@@ -29,7 +29,9 @@ def read_input_files(file_paths):
             for line in f:
                 if len(line.strip()) > 0:
                     line_parts = line.strip().split()
-                    assert(len(line_parts) >= 2)
+                    # assert(len(line_parts) >= 2)
+                    if len(line_parts) < 2:
+                        continue
                     words.append(line_parts[0])
                     labels.append(line_parts[-1])
                 elif len(line.strip()) == 0 and len(words) > 0:
