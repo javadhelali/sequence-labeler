@@ -1,5 +1,8 @@
+import json
 import sys
 import collections
+
+import colorama
 import numpy
 import random
 import math
@@ -39,6 +42,25 @@ def read_input_files(file_paths):
                     words, labels = [], []
             if len(words) > 0:
                 raise ValueError("The format expects an empty line at the end of the file in: " + file_path)
+    return sentences
+
+
+def read_input(contents):
+    sentences = []
+    words, labels = [], []
+    for line in contents:
+        if len(line.strip()) > 0:
+            line_parts = line.strip().split()
+            # assert(len(line_parts) >= 2)
+            if len(line_parts) < 2:
+                continue
+            words.append(line_parts[0])
+            labels.append(line_parts[-1])
+        elif len(line.strip()) == 0 and len(words) > 0:
+            sentences.append((words, labels))
+            words, labels = [], []
+    if len(words) > 0:
+        raise ValueError("The format expects an empty line at the end of the file in: " + str(contents))
     return sentences
 
 
@@ -108,6 +130,40 @@ def create_feature_matrices_for_batch(sentences, sentence_ids_in_batch, word2id,
 
     return word_ids, char_ids, char_mask, label_ids
 
+
+def predict_with_probs(sequencelabeler, sentence):
+    config = sequencelabeler.config
+    sentences = read_input([w + ' ' + config['main_label'] for w in sentence.split(' ')] + [''])
+    res = list()
+    batches_of_sentence_ids = create_batches_of_sentence_ids(sentences, config["max_batch_size"])
+    label2id = sequencelabeler.config["label2id"]
+    word2id = sequencelabeler.config["word2id"]
+    char2id = sequencelabeler.config["char2id"]
+    singletons = sequencelabeler.config["singletons"]
+
+    for sentence_ids_in_batch in batches_of_sentence_ids:
+        word_ids, char_ids, char_mask, label_ids = create_feature_matrices_for_batch(sentences, sentence_ids_in_batch, word2id, char2id, label2id, singletons, config)
+        cost, predicted_labels, probs = sequencelabeler.test_return_probs(word_ids, char_ids, char_mask, label_ids)
+        res.append((cost, predicted_labels, probs))
+
+    return res
+
+def predict(sequencelabeler, sentence):
+    config = sequencelabeler.config
+    sentences = read_input([w + ' ' + config['main_label'] for w in sentence.split(' ')] + [''])
+    res = list()
+    batches_of_sentence_ids = create_batches_of_sentence_ids(sentences, config["max_batch_size"])
+    label2id = sequencelabeler.config["label2id"]
+    word2id = sequencelabeler.config["word2id"]
+    char2id = sequencelabeler.config["char2id"]
+    singletons = sequencelabeler.config["singletons"]
+
+    for sentence_ids_in_batch in batches_of_sentence_ids:
+        word_ids, char_ids, char_mask, label_ids = create_feature_matrices_for_batch(sentences, sentence_ids_in_batch, word2id, char2id, label2id, singletons, config)
+        cost, predicted_labels = sequencelabeler.test(word_ids, char_ids, char_mask, label_ids)
+        res.append((cost, predicted_labels))
+
+    return res
 
 
 def process_sentences(sequencelabeler, sentences, testing, learningrate, name, main_label_id, word2id, char2id, label2id, singletons, config, verbose=True):
@@ -262,6 +318,8 @@ def run_experiment(config_path):
     """
     config = parse_config("config", config_path)
 
+    print(colorama.Fore.WHITE + json.dumps(config,indent=2))
+
     random.seed(config["random_seed"])
     numpy.random.seed(config["random_seed"])
 
@@ -271,6 +329,10 @@ def run_experiment(config_path):
 
     # Preparing dictionaries
     if config["path_train"] is not None and len(config["path_train"]) > 0:
+        print(colorama.Fore.BLUE + 'train %s' % config["path_train"] + colorama.Fore.WHITE)
+        # return
+
+
         sentences_train = read_input_files(config["path_train"])
         word2id = generate_word2id_dictionary([" ".join(sentence[0]) for sentence in sentences_train], 
                                                         min_freq=config["min_word_freq"], 
@@ -286,11 +348,18 @@ def run_experiment(config_path):
         singletons = find_singletons(sentences_train) if config["use_singletons"] == True else None
 
     if config["load"] is not None and len(config["load"]) > 0:
+        print(colorama.Fore.BLUE + 'load %s' % config["load"] + colorama.Fore.WHITE)
+
         sequencelabeler = SequenceLabeler.load(config["load"])
         label2id = sequencelabeler.config["label2id"]
         word2id = sequencelabeler.config["word2id"]
         char2id = sequencelabeler.config["char2id"]
         singletons = sequencelabeler.config["singletons"]
+
+        print(colorama.Fore.CYAN + 'load %s' % json.dumps(sequencelabeler.config) + colorama.Fore.WHITE)
+        # return
+
+
 
     if config["load"] is None or len(config["load"]) == 0:
         config["n_words"] = len(word2id)
@@ -367,4 +436,5 @@ def run_experiment(config_path):
 
 
 if __name__ == "__main__":
+    # print(sys.argv[1])
     run_experiment(sys.argv[1])
